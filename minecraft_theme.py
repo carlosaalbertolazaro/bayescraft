@@ -39,19 +39,27 @@ def prepare_static_files():
             except: pass
 
 def load_media_info():
+    """
+    Carga media/ como base64 — funciona en local Y en Streamlit Cloud.
+    Videos > 50 MB se omiten para no saturar memoria.
+    """
     md = _root()/"media"; md.mkdir(exist_ok=True); result=[]
+    MAX_VIDEO_BYTES = 50 * 1024 * 1024  # 50 MB límite
     for f in sorted(md.iterdir()):
         suf=f.suffix.lower()
         if suf not in MIME_MAP or f.name.endswith(".txt"): continue
         mime=MIME_MAP[suf]; is_v=mime.startswith("video")
-        if is_v:
-            result.append({"name":f.name,"mime":mime,"is_video":True,
-                           "url":f"/app/static/{f.name}","b64":None})
-        else:
-            try:
-                b64=base64.b64encode(f.read_bytes()).decode()
-                result.append({"name":f.name,"mime":mime,"is_video":False,"url":None,"b64":b64})
-            except: pass
+        try:
+            size = f.stat().st_size
+            if is_v and size > MAX_VIDEO_BYTES:
+                # Video demasiado grande — usar static serving como fallback
+                result.append({"name":f.name,"mime":mime,"is_video":True,
+                               "url":f"/app/static/{f.name}","b64":None})
+                continue
+            b64 = base64.b64encode(f.read_bytes()).decode()
+            result.append({"name":f.name,"mime":mime,"is_video":is_v,
+                           "url":None,"b64":b64})
+        except: pass
     return result
 
 # ── matplotlib ──────────────────────────────────────────
@@ -359,15 +367,22 @@ def get_hero_html(media_info: list) -> str:
         for i, m in enumerate(media_info):
             on = " on" if i == 0 else ""
             if m["is_video"]:
+                if m["b64"]:
+                    # Base64 — funciona en local Y en Streamlit Cloud
+                    src = f"data:{m['mime']};base64,{m['b64']}"
+                else:
+                    # Fallback static (solo local con enableStaticServing)
+                    src = m["url"]
                 slides += (
                     f'<div class="mc-hero-slide{on}" id="hs{i}">'
                     f'<video autoplay muted loop playsinline preload="auto">'
-                    f'<source src="{m["url"]}" type="{m["mime"]}"></video></div>'
+                    f'<source src="{src}" type="{m["mime"]}"></video></div>'
                 )
             else:
+                b64src = f"data:{m['mime']};base64,{m['b64']}"
                 slides += (
                     f'<div class="mc-hero-slide{on}" id="hs{i}" style="'
-                    f'background-image:url(data:{m["mime"]};base64,{m["b64"]});'
+                    f'background-image:url({b64src});'
                     f'background-size:cover;background-position:center;"></div>'
                 )
             dots += f'<button class="mc-dot{on}" onclick="mcSlide({i})"></button>'
