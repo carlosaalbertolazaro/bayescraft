@@ -540,58 +540,161 @@ with t4:
 # ── TAB 5 ────────────────────────────────────────────────
 with t5:
     st.markdown(section_hdr("Insights con IA","💡"),unsafe_allow_html=True)
-    st.markdown(ins(
-        'Conecta con <b>Claude (Anthropic)</b>. API Key en '
-        '<a href="https://console.anthropic.com" target="_blank" style="color:#4DD9D9;">'
-        'console.anthropic.com</a>'
-    ),unsafe_allow_html=True)
-    ia1,ia2=st.columns([2,1])
-    with ia1: ak=st.text_input("API Key:",type="password",placeholder="sk-ant-...",key="apik")
-    with ia2:
-        pi=(info_cols["binarias"]+info_cols["categoricas"]) or list(df.columns)
-        ti=st.selectbox("Variable objetivo:",pi,key="iat")
-    if ak and st.button("🤖 Generar Insights con IA",key="btn_ia"):
-        with st.spinner("Consultando Claude..."):
-            try:
-                import anthropic as ant
-                txt=(
-                    f"Dataset: {res_df['filas']} filas, {res_df['columnas']} columnas\n"
-                    f"Objetivo: {ti}\nNuméricas: {', '.join(info_cols['numericas'])}\n"
-                    f"Categóricas: {', '.join(info_cols['categoricas'])}\n"
-                    f"Distribución '{ti}':\n{df[ti].value_counts().to_string()}\n"
-                    f"Stats:\n{df[info_cols['numericas']].describe().round(3).to_string() if info_cols['numericas'] else 'N/A'}"
-                )
-                cl=ant.Anthropic(api_key=ak)
-                msg=cl.messages.create(model="claude-opus-4-5",max_tokens=1500,
-                    system="Experto estadística bayesiana. Secciones: RESUMEN|HALLAZGOS|RIESGOS|RECOMENDACIONES|PROXIMOS PASOS.",
-                    messages=[{"role":"user","content":f"Analiza:\n\n{txt}"}])
-                st.markdown(section_hdr("Análisis de Claude","🤖"),unsafe_allow_html=True)
-                st.markdown(
-                    f'<div class="mc-card" style="font-family:Rajdhani,sans-serif;font-size:14px;line-height:1.8;">'
-                    f'{msg.content[0].text.replace(chr(10),"<br>")}</div>',
-                    unsafe_allow_html=True)
-            except ImportError: st.markdown(ins("Instala: pip install anthropic","d"),unsafe_allow_html=True)
-            except Exception as e: st.error(f"Error IA: {e}")
-    else:
-        if st.button("📊 Análisis básico sin API",key="btn_auto"):
-            ta=ti if ti in df.columns else df.columns[0]
-            da=df[ta].value_counts(); pe=da.iloc[0]/len(df) if len(da)>0 else 0
-            st.markdown(ins(
-                f"<b>Filas:</b> {res_df['filas']:,} | <b>Columnas:</b> {res_df['columnas']} | "
-                f"<b>Nulos:</b> {res_df['nulos']}<br>"
-                f"<b>Variable '{ta}':</b> {da.to_dict()}<br>"
-                f"<b>P(evento principal):</b> {pe:.4f} ({pe*100:.2f}%)", "s"
-            ),unsafe_allow_html=True)
-            if info_cols["numericas"]:
-                from sklearn.preprocessing import LabelEncoder
-                ts=df[ta].copy()
-                if ts.dtype=="object":
-                    le=LabelEncoder(); ts=pd.Series(le.fit_transform(ts.astype(str)))
-                cr={c:round(df[c].corr(ts),4) for c in info_cols["numericas"] if c in df.columns}
-                if cr:
-                    dc=pd.DataFrame(list(cr.items()),columns=["Variable","Correlación"])
-                    dc["Abs"]=dc["Correlación"].abs(); dc=dc.sort_values("Abs",ascending=False).drop("Abs",axis=1)
-                    dc["Nivel"]=dc["Correlación"].apply(lambda x:"🔴 Alta" if abs(x)>.5 else"🟡 Media" if abs(x)>.2 else"🟢 Baja")
-                    st.dataframe(dc,use_container_width=True)
+
+    # ── Selector de proveedor ──────────────────────────────
+    st.markdown("""
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px;">
+      <div style="background:#0C0C12;border:1px solid #28283A;border-top:2px solid #4285F4;
+        padding:14px 20px;border-radius:2px;flex:1;min-width:200px;">
+        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:12px;
+          color:#4285F4;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
+          ✦ Google Gemini — GRATIS</div>
+        <div style="font-family:Rajdhani,sans-serif;font-size:12px;color:#7A7A8A;">
+          60 consultas/min gratuitas<br>
+          Key en: <a href="https://aistudio.google.com/apikey" target="_blank"
+          style="color:#4DD9D9;">aistudio.google.com/apikey</a></div>
+      </div>
+      <div style="background:#0C0C12;border:1px solid #28283A;border-top:2px solid #FFAA00;
+        padding:14px 20px;border-radius:2px;flex:1;min-width:200px;">
+        <div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:12px;
+          color:#FFAA00;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
+          ⛏ Claude (Anthropic) — De pago</div>
+        <div style="font-family:Rajdhani,sans-serif;font-size:12px;color:#7A7A8A;">
+          ~$0.003 por análisis<br>
+          Key en: <a href="https://console.anthropic.com" target="_blank"
+          style="color:#4DD9D9;">console.anthropic.com</a></div>
+      </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    pi=(info_cols["binarias"]+info_cols["categoricas"]) or list(df.columns)
+    ai1,ai2,ai3 = st.columns([1.2, 2, 1])
+    with ai1:
+        proveedor = st.selectbox("Proveedor IA:",
+            ["✦ Gemini (Gratis)", "⛏ Claude (Anthropic)"],
+            label_visibility="collapsed", key="ia_prov")
+    with ai2:
+        ak = st.text_input("API Key:", type="password",
+            placeholder="AIza... (Gemini)  ó  sk-ant-... (Claude)",
+            label_visibility="collapsed", key="apik")
+    with ai3:
+        ti = st.selectbox("Variable objetivo:", pi,
+            label_visibility="collapsed", key="iat")
+
+    # ── Helper: construir prompt ───────────────────────────
+    def _build_prompt():
+        stats_txt = df[info_cols["numericas"]].describe().round(3).to_string() if info_cols["numericas"] else "N/A"
+        return (
+            f"Eres un experto en estadística bayesiana. Analiza este dataset y responde "
+            f"estructurado en 5 secciones: RESUMEN, HALLAZGOS PRINCIPALES, VARIABLES DE RIESGO, "
+            f"RECOMENDACIONES y PRÓXIMOS PASOS.\n\n"
+            f"Dataset: {res_df['filas']} filas, {res_df['columnas']} columnas\n"
+            f"Variable objetivo: {ti}\n"
+            f"Variables numéricas: {', '.join(info_cols['numericas'])}\n"
+            f"Variables categóricas: {', '.join(info_cols['categoricas'])}\n"
+            f"Distribución '{ti}':\n{df[ti].value_counts().to_string()}\n"
+            f"Estadísticas descriptivas:\n{stats_txt}"
+        )
+
+    def _show_result(texto, modelo_nombre):
+        st.markdown(section_hdr(f"Análisis — {modelo_nombre}","🤖"), unsafe_allow_html=True)
+        # Formatear secciones con colores
+        html = ""
+        for linea in texto.split("\n"):
+            l = linea.strip()
+            if any(l.startswith(s) for s in ["RESUMEN","HALLAZGOS","VARIABLES","RECOMENDACIONES","PRÓXIMOS","PROXIMOS"]):
+                html += f'<div style="font-family:Rajdhani,sans-serif;font-weight:700;font-size:13px;color:#FFAA00;text-transform:uppercase;letter-spacing:2px;margin:18px 0 6px;border-bottom:1px solid #28283A;padding-bottom:4px;">{l}</div>'
+            elif l.startswith("•") or l.startswith("-"):
+                html += f'<div style="font-family:Rajdhani,sans-serif;font-size:14px;color:#E8E8E8;padding:3px 0 3px 16px;line-height:1.6;">{l}</div>'
+            elif l:
+                html += f'<div style="font-family:Rajdhani,sans-serif;font-size:14px;color:#AAAAAA;padding:2px 0;line-height:1.6;">{l}</div>'
+        st.markdown(f'<div class="mc-card">{html}</div>', unsafe_allow_html=True)
+
+    # ── Botones ────────────────────────────────────────────
+    c_btn1, c_btn2 = st.columns([1, 1])
+    with c_btn1:
+        btn_ia = st.button("🤖 Generar Insights con IA", key="btn_ia")
+    with c_btn2:
+        btn_auto = st.button("📊 Análisis sin API (gratis)", key="btn_auto")
+
+    # ── Análisis con IA ────────────────────────────────────
+    if btn_ia:
+        if not ak:
+            st.markdown(ins("⚠️ Ingresa tu API Key primero.","w"), unsafe_allow_html=True)
+        else:
+            prompt = _build_prompt()
+            if "Gemini" in proveedor:
+                with st.spinner("Consultando Gemini..."):
+                    try:
+                        import urllib.request, json as _json
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={ak}"
+                        body = _json.dumps({"contents":[{"parts":[{"text": prompt}]}]}).encode()
+                        req  = urllib.request.Request(url, data=body,
+                               headers={"Content-Type":"application/json"}, method="POST")
+                        with urllib.request.urlopen(req, timeout=30) as resp:
+                            data = _json.loads(resp.read())
+                        texto = data["candidates"][0]["content"]["parts"][0]["text"]
+                        _show_result(texto, "Gemini 2.0 Flash")
+                    except Exception as e:
+                        st.markdown(ins(f"❌ Error Gemini: {e}","d"), unsafe_allow_html=True)
+                        st.markdown(ins("Verifica tu API Key en <a href='https://aistudio.google.com/apikey' target='_blank' style='color:#4DD9D9;'>aistudio.google.com/apikey</a>","w"), unsafe_allow_html=True)
+            else:
+                with st.spinner("Consultando Claude..."):
+                    try:
+                        import anthropic as ant
+                        cl  = ant.Anthropic(api_key=ak)
+                        msg = cl.messages.create(
+                            model="claude-opus-4-5", max_tokens=1500,
+                            messages=[{"role":"user","content": prompt}])
+                        _show_result(msg.content[0].text, "Claude (Anthropic)")
+                    except ImportError:
+                        st.markdown(ins("Instala: pip install anthropic","d"), unsafe_allow_html=True)
+                    except Exception as e:
+                        st.error(f"Error Claude: {e}")
+
+    # ── Análisis automático SIN API ────────────────────────
+    if btn_auto:
+        from sklearn.preprocessing import LabelEncoder
+        ta  = ti if ti in df.columns else df.columns[0]
+        da  = df[ta].value_counts()
+        pe  = da.iloc[0] / len(df) if len(da) > 0 else 0
+        ts  = df[ta].copy()
+        if ts.dtype == "object":
+            le = LabelEncoder(); ts = pd.Series(le.fit_transform(ts.astype(str)))
+
+        # Correlaciones
+        cr = {c: round(df[c].corr(ts), 4) for c in info_cols["numericas"] if c in df.columns}
+        dc = pd.DataFrame(list(cr.items()), columns=["Variable","Correlación"]) if cr else pd.DataFrame()
+        if not dc.empty:
+            dc["Abs"] = dc["Correlación"].abs()
+            dc = dc.sort_values("Abs", ascending=False).drop("Abs", axis=1)
+            dc["Nivel"] = dc["Correlación"].apply(
+                lambda x: "🔴 Alta" if abs(x)>.5 else "🟡 Media" if abs(x)>.2 else "🟢 Baja")
+
+        # Mejor variable predictora
+        mejor = dc.iloc[0]["Variable"] if not dc.empty else "N/A"
+        mejor_corr = dc.iloc[0]["Correlación"] if not dc.empty else 0
+
+        st.markdown(section_hdr("Análisis Automático","📊"), unsafe_allow_html=True)
+        m1,m2,m3 = st.columns(3)
+        m1.metric("Registros totales", f"{res_df['filas']:,}")
+        m2.metric(f"P({ta}=más común)", f"{pe*100:.1f}%")
+        m3.metric("Mejor predictor", mejor, f"r={mejor_corr:.3f}")
+
+        st.markdown(ins(
+            f"<b>Variable '{ta}':</b> {da.to_dict()}<br>"
+            f"<b>P(evento principal):</b> {pe:.4f} ({pe*100:.2f}%)<br>"
+            f"<b>Nulos en dataset:</b> {res_df['nulos']}", "s"
+        ), unsafe_allow_html=True)
+
+        if not dc.empty:
+            st.markdown(section_hdr("Correlaciones con objetivo","🔗"), unsafe_allow_html=True)
+            st.dataframe(dc, use_container_width=True)
+            # Insight automático
+            altas = dc[dc["Correlación"].abs() > 0.5]["Variable"].tolist()
+            if altas:
+                st.markdown(ins(f"⚡ Variables con correlación ALTA: <b>{', '.join(altas)}</b> — son las mejores candidatas para el análisis bayesiano.","s"), unsafe_allow_html=True)
+            else:
+                st.markdown(ins("🟡 Ninguna variable supera correlación 0.5 — prueba el Teorema de Bayes con cada variable para encontrar la más predictiva.","w"), unsafe_allow_html=True)
 
 st.markdown(get_footer(),unsafe_allow_html=True)
