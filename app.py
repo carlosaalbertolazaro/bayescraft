@@ -627,7 +627,7 @@ with t5:
                 with st.spinner("Consultando Gemini..."):
                     try:
                         import urllib.request, json as _json
-                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={ak}"
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite-preview:generateContent?key={ak}"
                         body = _json.dumps({"contents":[{"parts":[{"text": prompt}]}]}).encode()
                         req  = urllib.request.Request(url, data=body,
                                headers={"Content-Type":"application/json"}, method="POST")
