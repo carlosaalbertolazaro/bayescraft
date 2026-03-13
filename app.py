@@ -634,7 +634,7 @@ with t5:
                         with urllib.request.urlopen(req, timeout=30) as resp:
                             data = _json.loads(resp.read())
                         texto = data["candidates"][0]["content"]["parts"][0]["text"]
-                        _show_result(texto, "Gemini 2.0 Flash")
+                        _show_result(texto, "Gemini 3.1 Flash Lite")
                     except Exception as e:
                         st.markdown(ins(f"❌ Error Gemini: {e}","d"), unsafe_allow_html=True)
                         st.markdown(ins("Verifica tu API Key en <a href='https://aistudio.google.com/apikey' target='_blank' style='color:#4DD9D9;'>aistudio.google.com/apikey</a>","w"), unsafe_allow_html=True)
